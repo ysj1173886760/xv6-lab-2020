@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -52,11 +54,40 @@ uvmcreate_kpgtbl() {
   pagetable_t kpagetable = (pagetable_t) uvmcreate();
 
   // copy the kernel page table to this user specific kernel page table
-  for (int i = 0; i < 512; i++) {
+  // the first entry is for user vm, the last entry is per process kernel stack
+  // so only those pages which will be vary among processes will not be copied
+  for (int i = 1; i < 255; i++) {
     kpagetable[i] = kernel_pagetable[i];
   }
 
+  // map the kernel address in first entry
+  ukvmmap(kpagetable, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  ukvmmap(kpagetable, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  ukvmmap(kpagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  ukvmmap(kpagetable, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  // map the kernel address in last entry
+  ukvmmap(kpagetable, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
   return kpagetable;
+}
+
+void free_entry(pagetable_t level1) {
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = level1[i];
+    if (pte & PTE_V) {
+      kfree((void *)PTE2PA(pte));
+    }
+  }
+  kfree(level1);
+}
+
+// only free the first and the last tbl entrys
+void
+uvmfree_kpgtbl(pagetable_t pagetable) {
+  free_entry((void *)PTE2PA(pagetable[0]));
+  free_entry((void *)PTE2PA(pagetable[255]));
+  kfree(pagetable);
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -133,6 +164,13 @@ kvmmap(uint64 va, uint64 pa, uint64 sz, int perm)
     panic("kvmmap");
 }
 
+void
+ukvmmap(pagetable_t pagetable, uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(pagetable, va, sz, pa, perm) != 0)
+    panic("ukvmmap");
+}
+
 // translate a kernel virtual address to
 // a physical address. only needed for
 // addresses on the stack.
@@ -143,8 +181,10 @@ kvmpa(uint64 va)
   uint64 off = va % PGSIZE;
   pte_t *pte;
   uint64 pa;
+  struct proc *p = myproc();
   
-  pte = walk(kernel_pagetable, va, 0);
+  // use process kernel pgtbl, because we are using kernel stack here
+  pte = walk(p->kpagetable, va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
@@ -168,8 +208,10 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
-    if(*pte & PTE_V)
+    if(*pte & PTE_V) {
+      printf("%p\n", a);
       panic("remap");
+    }
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;

@@ -34,12 +34,16 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
+
+      /* comment out here, move this functionality to allocproc
       char *pa = kalloc();
       if(pa == 0)
         panic("kalloc");
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
       p->kstack = va;
+      */
+      p->kstack = 0;
   }
   kvminithart();
 }
@@ -121,7 +125,21 @@ found:
     return 0;
   }
 
+  // create kernel page
   p->kpagetable = uvmcreate_kpgtbl();
+  if (p->kpagetable == 0) {
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  
+  // allocate kernel stack for every process
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK(0);
+  ukvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -143,7 +161,19 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+
+  if (p->kstack != 0) {
+    // find the kernel stack pa
+    pte_t *pte = walk(p->kpagetable, p->kstack, 0);
+    kfree((void *)PTE2PA(*pte));
+  }
+
+  // then free the tbl entrys
+  uvmfree_kpgtbl(p->kpagetable);
+
   p->pagetable = 0;
+  p->kpagetable = 0;
+  p->kstack = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -475,6 +505,11 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+        // switch to per process kernel pgtbl
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
+
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -488,6 +523,8 @@ scheduler(void)
 #if !defined (LAB_FS)
     if(found == 0) {
       intr_on();
+      // switch back to global kernel pgtbl
+      kvminithart();
       asm volatile("wfi");
     }
 #else

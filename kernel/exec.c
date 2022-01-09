@@ -116,6 +116,11 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+  // clear previous mapping
+  copy_upgtbl(pagetable, p->kpagetable, oldsz, 0);
+  // update the new user pgtbl to kernel pgtbl
+  copy_upgtbl(pagetable, p->kpagetable, 0, p->sz);
+
   if (p->pid == 1) {
     vmprint(p->pagetable);
   }

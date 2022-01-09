@@ -169,7 +169,9 @@ freeproc(struct proc *p)
   }
 
   // then free the tbl entrys
-  uvmfree_kpgtbl(p->kpagetable);
+  if (p->kpagetable) {
+    uvmfree_kpgtbl(p->kpagetable);
+  }
 
   p->pagetable = 0;
   p->kpagetable = 0;

@@ -697,3 +697,19 @@ procdump(void)
     printf("\n");
   }
 }
+
+void
+backtrace()
+{
+  uint64 fp = r_fp();
+  uint64 upper_bound = PGROUNDUP(fp);
+
+  printf("backtrace:\n");
+
+  // when the current frame is at the top of the page, then we don't need to print ra any more
+  while (fp != upper_bound) {
+    uint64 ra_addr = fp - 8;
+    printf("%p\n", *(uint64 *)ra_addr);
+    fp = *(uint64 *)(fp - 16);
+  }
+}

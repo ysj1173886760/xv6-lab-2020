@@ -1,0 +1,6 @@
+a0, a1, a2...
+there is no call in asm, because compiler calculated it in compile time
+we use auipc at address 30, which will store pc + 0 to ra, then we called function at 1536(ra), which is 600 + ra in hex. thus printf is located on 0x630
+0x30
+HE110 World
+the value previously in a2, because string is in a0, and 3 is in a1, so we will get a random number in a2

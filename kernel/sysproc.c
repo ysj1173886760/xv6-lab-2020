@@ -125,5 +125,39 @@ sys_sigalarm(void)
 uint64
 sys_sigreturn(void)
 {
+  struct proc *p = myproc();
+  p->trapframe->epc = p->pc;
+  p->trapframe->ra = p->ra;
+  p->trapframe->sp = p->sp;
+  p->trapframe->gp = p->gp;
+  p->trapframe->tp = p->tp;
+  p->trapframe->t0 = p->t0;
+  p->trapframe->t1 = p->t1;
+  p->trapframe->t2 = p->t2;
+  p->trapframe->s0 = p->s0;
+  p->trapframe->s1 = p->s1;
+  p->trapframe->a0 = p->a0;
+  p->trapframe->a1 = p->a1;
+  p->trapframe->a2 = p->a2;
+  p->trapframe->a3 = p->a3;
+  p->trapframe->a4 = p->a4;
+  p->trapframe->a5 = p->a5;
+  p->trapframe->a6 = p->a6;
+  p->trapframe->a7 = p->a7;
+  p->trapframe->s2 = p->s2;
+  p->trapframe->s3 = p->s3;
+  p->trapframe->s4 = p->s4;
+  p->trapframe->s5 = p->s5;
+  p->trapframe->s6 = p->s6;
+  p->trapframe->s7 = p->s7;
+  p->trapframe->s8 = p->s8;
+  p->trapframe->s9 = p->s9;
+  p->trapframe->s10 = p->s10;
+  p->trapframe->s11 = p->s11;
+  p->trapframe->t3 = p->t3;
+  p->trapframe->t4 = p->t4;
+  p->trapframe->t5 = p->t5;
+  p->trapframe->t6 = p->t6;
+  p->allow_sig = 1;
   return 0;
 }

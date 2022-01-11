@@ -110,6 +110,7 @@ struct proc {
   int allow_sig;
 
   // saved for sig return
+  uint64 pc;
   uint64 ra;
   uint64 sp;
   uint64 gp;

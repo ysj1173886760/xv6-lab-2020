@@ -84,7 +84,39 @@ usertrap(void)
         p->sig_elapsed = 0;
         if (p->allow_sig) {
           p->allow_sig = 0;
+          p->pc = p->trapframe->epc;
           p->trapframe->epc = p->sig_handler;
+          p->ra = p->trapframe->ra;
+          p->sp = p->trapframe->sp;
+          p->gp = p->trapframe->gp;
+          p->tp = p->trapframe->tp;
+          p->t0 = p->trapframe->t0;
+          p->t1 = p->trapframe->t1;
+          p->t2 = p->trapframe->t2;
+          p->s0 = p->trapframe->s0;
+          p->s1 = p->trapframe->s1;
+          p->a0 = p->trapframe->a0;
+          p->a1 = p->trapframe->a1;
+          p->a2 = p->trapframe->a2;
+          p->a3 = p->trapframe->a3;
+          p->a4 = p->trapframe->a4;
+          p->a5 = p->trapframe->a5;
+          p->a6 = p->trapframe->a6;
+          p->a7 = p->trapframe->a7;
+          p->s2 = p->trapframe->s2;
+          p->s3 = p->trapframe->s3;
+          p->s4 = p->trapframe->s4;
+          p->s5 = p->trapframe->s5;
+          p->s6 = p->trapframe->s6;
+          p->s7 = p->trapframe->s7;
+          p->s8 = p->trapframe->s8;
+          p->s9 = p->trapframe->s9;
+          p->s10 = p->trapframe->s10;
+          p->s11 = p->trapframe->s11;
+          p->t3 = p->trapframe->t3;
+          p->t4 = p->trapframe->t4;
+          p->t5 = p->trapframe->t5;
+          p->t6 = p->trapframe->t6;
         }
       }
     }

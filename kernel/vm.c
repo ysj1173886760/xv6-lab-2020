@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -71,8 +73,10 @@ kvminithart()
 pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
-  if(va >= MAXVA)
+  if(va >= MAXVA) {
+    printf("%p\n", va);
     panic("walk");
+  }
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
@@ -180,8 +184,10 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     panic("uvmunmap: not aligned");
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
-    if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+    if((pte = walk(pagetable, a, 0)) == 0) {
+      continue;
+      // panic("uvmunmap: walk");
+    }
     if((*pte & PTE_V) == 0) {
       *pte = 0;
       continue;
@@ -318,9 +324,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      continue;
+      // panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      continue;
+      // panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -358,15 +366,27 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
+  struct proc *p = myproc();
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
+
+    if(pa0 == 0) {
+      if (dstva + n > p->sz || dstva + n < dstva ||dstva < p->trapframe->sp) {
+        return -1;
+      }
+      int res = allocate_and_map(p->pagetable, va0);
+      if (res == -1) {
+        // panic("failed to allocate memory");
+        p->killed = 1;
+      }
+      pa0 = walkaddr(pagetable, va0);
+    }
     memmove((void *)(pa0 + (dstva - va0)), src, n);
 
     len -= n;
@@ -383,15 +403,28 @@ int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
   uint64 n, va0, pa0;
+  struct proc *p = myproc();
 
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+
     n = PGSIZE - (srcva - va0);
     if(n > len)
       n = len;
+
+    if(pa0 == 0) {
+      if (srcva + n > p->sz || srcva + n < srcva || srcva < p->trapframe->sp) {
+        return -1;
+      }
+      int res = allocate_and_map(p->pagetable, va0);
+      if (res == -1) {
+        // panic("failed to allocate memory");
+        p->killed = 1;
+      }
+      pa0 = walkaddr(pagetable, va0);
+    }
+
     memmove(dst, (void *)(pa0 + (srcva - va0)), n);
 
     len -= n;
@@ -410,15 +443,27 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
   uint64 n, va0, pa0;
   int got_null = 0;
+  struct proc *p = myproc();
 
   while(got_null == 0 && max > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
-      return -1;
+
     n = PGSIZE - (srcva - va0);
     if(n > max)
       n = max;
+
+    if(pa0 == 0) {
+      if (srcva + n > p->sz || srcva + n < srcva || srcva < p->trapframe->sp) {
+        return -1;
+      }
+      int res = allocate_and_map(p->pagetable, va0);
+      if (res == -1) {
+        // panic("failed to allocate memory");
+        p->killed = 1;
+      }
+      pa0 = walkaddr(pagetable, va0);
+    }
 
     char *p = (char *) (pa0 + (srcva - va0));
     while(n > 0){

@@ -65,11 +65,17 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (r_scause() == 7 || r_scause() == 15) {
+    if (on_write(p->pagetable, r_stval()) == -1) {
+      p->killed = 1;
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+    // printf("%s\n", p->name);
+    // vmprint(p->pagetable);
     p->killed = 1;
   }
 

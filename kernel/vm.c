@@ -311,7 +311,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -320,14 +319,28 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    // if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+    //   kfree(mem);
+    //   goto err;
+    // }
+
+    // mask off the pte_w
+    flags = flags & (~PTE_W);
+    // set pte_rsw
+    flags = flags | PTE_RSW;
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0) {
       goto err;
     }
+    add_refcnt(pa);
+
+    // modify the parent page table
+    *pte = PA2PTE(pa) | flags;
   }
+  // vmprint(new);
+  // vmprint(old);
   return 0;
 
  err:
@@ -355,12 +368,27 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
+  pte_t *pte;
+  
+  if (dstva + len < dstva || dstva + len > PHYSTOP) {
+    return -1;
+  }
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    pte = walk(pagetable, va0, 0);
+    if (pte == 0) {
+      return -1;
+    }
+    pa0 = PTE2PA(*pte);
     if(pa0 == 0)
       return -1;
+    if ((*pte & PTE_W) == 0) {
+      if (on_write(pagetable, dstva) == -1) {
+        return -1;
+      }
+      pa0 = walkaddr(pagetable, va0);
+    }
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
@@ -439,4 +467,24 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+void print_pgtbl_helper(pagetable_t pagetable, int level) {
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if (pte & PTE_V) {
+      for (int j = 0; j < level - 1; j++) {
+        printf(".. ");
+      }
+      printf("..%d: pte %p pa %p\n", i, pte, PTE2PA(pte));
+      if (level < 3) {
+        print_pgtbl_helper((pagetable_t)PTE2PA(pte), level + 1);
+      }
+    }
+  }
+}
+
+void vmprint(pagetable_t pagetable) {
+  printf("page table %p\n", pagetable);
+  print_pgtbl_helper(pagetable, 1);
 }

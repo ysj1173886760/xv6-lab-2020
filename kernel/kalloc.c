@@ -107,10 +107,11 @@ add_refcnt(uint64 pa)
 int
 on_write(pagetable_t pagetable, uint64 va)
 {
-  // struct proc *p = myproc();
-  // if (va >= p->sz || va < p->trapframe->sp) {
-  //   return -1;
-  // }
+  struct proc *p = myproc();
+  if (va >= p->sz || (va > PGROUNDDOWN(p->trapframe->sp) && va < p->trapframe->sp)) {
+    // printf("%p %p %d\n", va, p->trapframe->sp, p->pid);
+    return -1;
+  }
   // printf("on writing %p pid %d\n", va, p->pid);
 
   pte_t *pte = walk(pagetable, va, 0);

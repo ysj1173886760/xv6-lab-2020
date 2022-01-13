@@ -1,0 +1,2 @@
+it's a classic lost update situation.
+where two threads are trying to modifying the same linked list, and only one will success, update from the other thread will be overwritten.

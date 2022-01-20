@@ -113,7 +113,7 @@ bget(uint dev, uint blockno)
     if (i == idx)
       locked_idx = 1;
 
-    for(b = bcache.bkt[idx].head.prev; b != &bcache.bkt[idx].head; b = b->prev){
+    for(b = bcache.bkt[i].head.prev; b != &bcache.bkt[i].head; b = b->prev){
       if(b->refcnt == 0) {
         free_bkt = i;
         free_buf = b;
@@ -129,7 +129,7 @@ bget(uint dev, uint blockno)
   }
 
   if (locked_idx == 0)
-    acquire(&bcache.bkt[locked_idx].lock);
+    acquire(&bcache.bkt[idx].lock);
 
   // now, if we found a free buffer from other bucket, we should hold 2 bucket lock
   // if we didn't find free buffer, then we only hold 1 lock

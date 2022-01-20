@@ -110,8 +110,10 @@ bget(uint dev, uint blockno)
   for (int i = 0; i < NBUCKET; i++) {
     acquire(&bcache.bkt[i].lock);
 
-    if (i == idx)
+    if (i == idx) {
       locked_idx = 1;
+      continue;
+    }
 
     for(b = bcache.bkt[i].head.prev; b != &bcache.bkt[i].head; b = b->prev){
       if(b->refcnt == 0) {

@@ -71,13 +71,19 @@ testsymlink(void)
   if(r < 0)
     fail("symlink b -> a failed");
 
+  printf("checkpoint1\n");
+
   if(write(fd1, buf, sizeof(buf)) != 4)
     fail("failed to write to a");
+
+  printf("checkpoint2\n");
 
   if (stat_slink("/testsymlink/b", &st) != 0)
     fail("failed to stat b");
   if(st.type != T_SYMLINK)
     fail("b isn't a symlink");
+
+  printf("checkpoint3\n");
 
   fd2 = open("/testsymlink/b", O_RDWR);
   if(fd2 < 0)
@@ -86,17 +92,25 @@ testsymlink(void)
   if (c != 'a')
     fail("failed to read bytes from b");
 
+  printf("checkpoint4\n");
+
   unlink("/testsymlink/a");
   if(open("/testsymlink/b", O_RDWR) >= 0)
     fail("Should not be able to open b after deleting a");
+
+  printf("checkpoint5\n");
 
   r = symlink("/testsymlink/b", "/testsymlink/a");
   if(r < 0)
     fail("symlink a -> b failed");
 
+  printf("checkpoint6\n");
+
   r = open("/testsymlink/b", O_RDWR);
   if(r >= 0)
     fail("Should not be able to open b (cycle b->a->b->..)\n");
+
+  printf("checkpoint7\n");
   
   r = symlink("/testsymlink/nonexistent", "/testsymlink/c");
   if(r != 0)

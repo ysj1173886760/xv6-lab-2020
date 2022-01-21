@@ -297,24 +297,41 @@ sys_open(void)
 
   begin_op();
 
-  if(omode & O_CREATE){
-    ip = create(path, T_FILE, 0, 0);
-    if(ip == 0){
-      end_op();
-      return -1;
+  int chase = 0;
+  int cnt = 10;
+
+  do {
+    chase = 0;
+    if(omode & O_CREATE){
+      ip = create(path, T_FILE, 0, 0);
+      if(ip == 0){
+        end_op();
+        return -1;
+      }
+    } else {
+      if((ip = namei(path)) == 0){
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      if(ip->type == T_DIR && omode != O_RDONLY){
+        iunlockput(ip);
+        end_op();
+        return -1;
+      } else if (ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0) {
+        readi(ip, 0, (uint64)path, 0, MAXPATH);
+        chase = 1;
+        cnt--;
+        iunlockput(ip);
+
+        if (cnt <= 0) {
+          end_op();
+          return -1;
+        }
+      }
     }
-  } else {
-    if((ip = namei(path)) == 0){
-      end_op();
-      return -1;
-    }
-    ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
-      iunlockput(ip);
-      end_op();
-      return -1;
-    }
-  }
+  } while (chase == 1);
+
 
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
     iunlockput(ip);
@@ -483,4 +500,57 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char path[MAXPATH], target[MAXPATH];
+  struct inode *ip, *dp;
+  char name[DIRSIZ];
+
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0){
+    return -1;
+  }
+
+  begin_op();
+
+  if((dp = nameiparent(path, name)) == 0) {
+    // printf("path not exists: %s %s\n", path, name);
+    goto bad;
+  }
+
+  ilock(dp);
+
+  if((ip = dirlookup(dp, name, 0)) != 0){
+    // printf("already exists\n");
+    iput(ip);
+    iunlockput(dp);
+    goto bad;
+  }
+
+  if((ip = ialloc(dp->dev, T_SYMLINK)) == 0)
+    panic("symlink: ialloc");
+  
+  ilock(ip);
+  ip->major = 0;
+  ip->minor = 0;
+  ip->nlink = 1;
+  iupdate(ip);
+
+  if (writei(ip, 0, (uint64)target, 0, strlen(target) + 1) != strlen(target) + 1)
+    panic("symlink: writei");
+  
+  if (dirlink(dp, name, ip->inum) < 0)
+    panic("symlink: dirlink");
+  
+  iunlockput(dp);
+  iunlockput(ip);
+  end_op();
+
+  return 0;
+
+bad:
+  end_op();
+  return -1;
 }

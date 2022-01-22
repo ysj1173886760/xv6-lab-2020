@@ -484,3 +484,164 @@ sys_pipe(void)
   }
   return 0;
 }
+
+int
+handle_mmap(struct proc *p, uint64 va)
+{
+  if (va >= p->sz || va < p->trapframe->sp) {
+    return -1;
+  }
+
+  struct vma *v = 0;
+  for (int i = 0; i < NVMA; i++) {
+    if (p->vma_table[i].f != 0 && 
+        va >= p->vma_table[i].addr &&
+        va < p->vma_table[i].addr + p->vma_table[i].length) {
+      v = &p->vma_table[i];
+      break;
+    }
+  }
+
+  if (v == 0) {
+    return -1;
+  }
+
+  va = PGROUNDDOWN(va);
+  void *mem = kalloc();
+  memset(mem, 0, PGSIZE);
+
+  if (mem == 0) {
+    return -1;
+  }
+
+  uint flag = PTE_U;
+  if (v->prot & PROT_WRITE) {
+    flag |= PTE_W;
+  }
+  if (v->prot & PROT_EXEC) {
+    flag |= PTE_X;
+  }
+  if (v->prot & PROT_READ) {
+    flag |= PTE_R;
+  }
+
+  if (mappages(p->pagetable, va, PGSIZE, (uint64)mem, flag) != 0) {
+    kfree(mem);
+    return -1;
+  }
+
+  ilock(v->f->ip);
+  readi(v->f->ip, 0, (uint64)mem, v->offset + va - v->addr, PGSIZE);
+  iunlock(v->f->ip);
+
+  return 0;
+}
+
+uint64
+sys_mmap(void)
+{
+  uint64 arg0;
+  uint64 addr;
+  int length, prot, flags, fd, offset;
+  struct file *f;
+
+  if (argaddr(0, &arg0) < 0 || 
+      argint(1, &length) < 0 ||
+      argint(2, &prot) < 0 ||
+      argint(3, &flags) < 0 ||
+      argfd(4, &fd, &f) < 0 ||
+      argint(5, &offset) < 0) {
+    return -1;
+  }
+
+  if (arg0 != 0) {
+    panic("mmap: addr is not 0");
+  }
+
+  if (!(f->readable) && (prot & PROT_READ)) {
+    return -1;
+  }
+  if (!(f->writable) && (prot & PROT_WRITE) && !(flags & MAP_PRIVATE)) {
+    return -1;
+  }
+
+  // allocate a vma
+  struct proc *p = myproc();
+  struct vma *v = 0;
+  for (int i = 0; i < NVMA; i++) {
+    if (p->vma_table[i].f == 0) {
+      v = &(p->vma_table[i]);
+      break;
+    }
+  }
+
+  if (v == 0) {
+    return -1;
+  }
+
+  v->offset = offset;
+  v->flags = flags;
+  v->prot = prot;
+  v->length = length;
+  v->f = p->ofile[fd];
+  filedup(v->f);
+  v->addr = addr = PGROUNDUP(p->sz);
+  p->sz = v->addr + length;
+  
+  return addr;
+}
+
+int
+munmap(struct proc *p, struct vma *v, uint64 addr, int length) {
+  if (v->flags & MAP_SHARED) {
+    // write back
+    v->f->off = addr - v->addr + v->offset;
+    filewrite(v->f, addr, length);
+  }
+
+  if (addr == v->addr) {
+    // header
+    uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+    v->addr += length;
+    v->offset += length;
+    v->length -= length;
+  } else {
+    uvmunmap(p->pagetable, addr, length / PGSIZE, 1);
+    v->length -= length;
+  }
+
+  if (v->length == 0) {
+    fileclose(v->f);
+    v->f = 0;
+  }
+  return 0;
+}
+
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  struct vma *v = 0;
+
+  if (argaddr(0, &addr) < 0 || 
+      argint(1, &length) < 0) {
+    return -1;
+  }
+  
+  struct proc *p = myproc();
+  for (int i = 0; i < NVMA; i++) {
+    if (p->vma_table[i].f != 0 && 
+        p->vma_table[i].addr <= addr && 
+        p->vma_table[i].addr + p->vma_table[i].length > addr) {
+      v = &p->vma_table[i];
+    }
+  }
+
+  if (v == 0) {
+    return -1;
+  }
+
+  munmap(p, v, addr, length);
+  return 0;
+}

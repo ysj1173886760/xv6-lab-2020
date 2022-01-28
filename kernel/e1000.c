@@ -135,7 +135,6 @@ e1000_recv(void)
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
 
-  acquire(&e1000_lock);
   int index = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
 
   while ((rx_ring[index].status & E1000_RXD_STAT_DD) != 0) {
@@ -148,14 +147,11 @@ e1000_recv(void)
     rx_ring[index].status = 0;
 
     regs[E1000_RDT] = index;
-    release(&e1000_lock);
 
     net_rx(buf);
 
-    acquire(&e1000_lock);
     index = (regs[E1000_RDT] + 1) % RX_RING_SIZE;
   }
-  release(&e1000_lock);
 }
 
 void
